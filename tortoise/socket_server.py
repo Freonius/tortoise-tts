@@ -1,8 +1,8 @@
 import spacy
 import threading
 import socket
-from tortoise.api_fast import TextToSpeech
-from utils.audio import load_voices
+from .api_fast import TextToSpeech
+from .utils.audio import load_voices
 
 tts = TextToSpeech()
 nlp = spacy.load("en_core_web_sm")
@@ -16,7 +16,7 @@ def generate_audio_stream(text, tts, voice_samples):
         voice_samples=voice_samples,
         conditioning_latents=conditioning_latents,
         verbose=True,
-        stream_chunk_size=40  # Adjust chunk size as needed
+        stream_chunk_size=40,  # Adjust chunk size as needed
     )
     for audio_chunk in stream:
         yield audio_chunk
@@ -31,14 +31,14 @@ def split_text(text, max_length=200):
     for sent in doc.sents:
         sent_length = len(sent.text)
         if length + sent_length > max_length:
-            chunks.append(' '.join(chunk))
+            chunks.append(" ".join(chunk))
             chunk = []
             length = 0
         chunk.append(sent.text)
         length += sent_length + 1
 
     if chunk:
-        chunks.append(' '.join(chunk))
+        chunks.append(" ".join(chunk))
 
     return chunks
 
@@ -46,10 +46,10 @@ def split_text(text, max_length=200):
 def handle_client(client_socket, tts):
     try:
         while True:
-            data = client_socket.recv(1024).decode('utf-8')
+            data = client_socket.recv(1024).decode("utf-8")
             if not data:
                 break
-            character_name, text = data.split('|', 1)
+            character_name, text = data.split("|", 1)
             text_chunks = split_text(text, max_length=200)
             print(text_chunks)
             for chunk in text_chunks:
@@ -68,14 +68,16 @@ def handle_client(client_socket, tts):
 
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(('0.0.0.0', 5000))
+    server.bind(("0.0.0.0", 5000))
     server.listen(5)
     print("Server listening on port 5000")
 
     while True:
         client_socket, addr = server.accept()
         print(f"Accepted connection from {addr}")
-        client_handler = threading.Thread(target=handle_client, args=(client_socket, tts))
+        client_handler = threading.Thread(
+            target=handle_client, args=(client_socket, tts)
+        )
         client_handler.start()
 
 

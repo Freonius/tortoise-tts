@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "tortoise-tts"
+version = "0.1.0"
+description = ""
+authors = ["Fred Pirani <freonius@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "tortoise_tts" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+numpy = "1.26.4"
+torch = "2.7.0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^25.1.0"
+ruff = "^0.12.1"
+mypy = "^1.16.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
