@@ -14,6 +14,74 @@ def null_position_embeddings(range, dim):
     return torch.zeros((range.shape[0], range.shape[1], dim), device=range.device)
 
 
+def manual_generate(
+    model,  # your GPT2InferenceModel
+    input_ids,  # shape (batch, seq_len)
+    max_length=50,  # total length to generate (including input_ids)
+    bos_token_id=None,
+    eos_token_id=None,
+    pad_token_id=None,
+    logits_processor=None,  # e.g., LogitsProcessorList()
+    num_return_sequences=1,
+    device=None,
+    **model_kwargs,
+):
+    device = device or input_ids.device
+    batch_size = input_ids.shape[0]
+    generated = input_ids.clone()
+    finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+    attention_mask = (input_ids != pad_token_id).long()  # shape (batch, seq_len)
+    past_key_values = None
+    tot_steps = max_length - input_ids.shape[1]
+
+    for step in range(tot_steps):
+        # print(f"Step {step}/{tot_steps}")
+
+        # Only use full sequence at first step, then only last token
+        if past_key_values is not None:
+            model_inputs = generated[:, -1].unsqueeze(-1)
+        else:
+            model_inputs = generated
+
+        outputs = model(
+            input_ids=model_inputs,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            use_cache=True,
+            return_dict=True,
+            # **model_kwargs,
+        )
+
+        next_token_logits = outputs.logits[:, -1, :]
+        past_key_values = outputs.past_key_values
+
+        # (Optional) Apply custom LogitsProcessors, Warpers, etc
+        if logits_processor is not None:
+            next_token_logits = logits_processor(generated, next_token_logits)
+
+        # Sampling: argmax (greedy) or multinomial (sampling)
+        next_token = torch.argmax(next_token_logits, dim=-1)
+
+        # Replace finished sequences with pad token (if any)
+        if eos_token_id is not None:
+            next_token = torch.where(
+                finished,
+                torch.full_like(next_token, pad_token_id or eos_token_id),
+                next_token,
+            )
+
+        generated = torch.cat([generated, next_token.unsqueeze(-1)], dim=1)
+
+        # Mark as finished
+        if eos_token_id is not None:
+            finished |= next_token == eos_token_id
+
+        if finished.all():
+            break
+
+    return generated
+
+
 class ResBlock(nn.Module):
     """
     Basic residual convolutional block that uses GroupNorm.
@@ -680,7 +748,7 @@ class UnifiedVoice(nn.Module):
         max_generate_length=None,
         typical_sampling=False,
         typical_mass=0.9,
-        **hf_generate_kwargs
+        **hf_generate_kwargs,
     ):
 
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
@@ -728,16 +796,18 @@ class UnifiedVoice(nn.Module):
             if max_generate_length is None
             else trunc_index + max_generate_length
         )
-        gen = self.inference_model.generate(
+        gen = manual_generate(
+            self.inference_model,
             inputs,
-            bos_token_id=self.start_mel_token,
-            pad_token_id=self.stop_mel_token,
-            eos_token_id=self.stop_mel_token,
             max_length=max_length,
+            bos_token_id=self.start_mel_token,
+            eos_token_id=self.stop_mel_token,
+            pad_token_id=self.stop_mel_token,
             logits_processor=logits_processor,
             num_return_sequences=num_return_sequences,
             **hf_generate_kwargs,
         )
+
         return gen[:, trunc_index:]
 
     def get_generator(self, fake_inputs, **hf_generate_kwargs):

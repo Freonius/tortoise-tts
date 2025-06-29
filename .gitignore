@@ -133,3 +133,5 @@ dmypy.json
 .custom/*
 results/*
 debug_states/*
+tortoise_models
+.vscode
